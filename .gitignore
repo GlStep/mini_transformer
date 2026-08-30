@@ -28,6 +28,7 @@ MANIFEST
 
 # not necessary data folders
 data/raw/
+data/processed/
 .venv
 
 # Editor files
