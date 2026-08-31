@@ -30,6 +30,7 @@ MANIFEST
 data/raw/
 data/processed/
 tokenizer/trained/
+checkpoints/
 .venv
 
 # Editor files

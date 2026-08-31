@@ -50,5 +50,6 @@ class Transformer(nn.Module):
         return (seq == self.pad_id).unsqueeze(1).unsqueeze(2)
 
     def make_causal_mask(self, seq_len: int) -> torch.Tensor:
-        causal_mask = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+        device = next(self.parameters()).device
+        causal_mask = torch.triu(torch.ones(seq_len, seq_len, device=device), diagonal=1).bool()
         return causal_mask.unsqueeze(0).unsqueeze(1)

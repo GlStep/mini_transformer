@@ -13,13 +13,17 @@ class TranslationDataset(Dataset):
             pairs: list[str],
             processed_dir: Path,
             sp_model_path: Path,
-            split: str = "train"
+            split: str = "train",
+            max_len: int = 96
             ):
         self.sp = spm.SentencePieceProcessor(model_file=str(sp_model_path))
         self.bos_id = self.sp.bos_id()
         self.eos_id = self.sp.eos_id()
+        self.max_len = max_len
 
-        self.examples: list[tuple[str, str, str]] = []
+        self.examples: list[tuple[list[int], list[int]]] = []
+
+        n_dropped = 0
 
         for pair in pairs:
             lang_a, lang_b = pair.split("-")
@@ -30,16 +34,26 @@ class TranslationDataset(Dataset):
                 translation = example["translation"]
                 text_a = translation[lang_a]
                 text_b = translation[lang_b]
-                self.examples.append((text_a, text_b, lang_b))
-                self.examples.append((text_b, text_a, lang_a))
+                n_dropped += self._try_add(text_a, text_b, lang_b)
+                n_dropped += self._try_add(text_b, text_a, lang_a)
+
+        print(f"TranslationDataset[{split}]: kept {len(self.examples)}, dropped {n_dropped} over max_len={max_len}")
+
+    def _try_add(self, src_text: str, tgt_text: str, tgt_lang: str) -> int:
+        src_ids = [self.sp.piece_to_id(f"<2{tgt_lang}>")] + self.sp.encode(src_text, out_type=int)
+        tgt_ids = [self.bos_id] + self.sp.encode(tgt_text, out_type=int) + [self.eos_id]
+
+        if len(src_ids) > self.max_len or len(tgt_ids) > self.max_len:
+            return 1
+
+        self.examples.append((src_ids, tgt_ids))
+        return 0
 
     def __len__(self) -> int:
         return len(self.examples)
 
     def __getitem__(self, idx: int) -> dict[str, list[int]]:
-        src_text, tgt_text, tgt_lang = self.examples[idx]
-        src_ids = [self.sp.piece_to_id(f"<2{tgt_lang}>")] + self.sp.encode(src_text, out_type=int)
-        tgt_ids = [self.bos_id] + self.sp.encode(tgt_text, out_type=int) + [self.eos_id]
+        src_ids, tgt_ids = self.examples[idx]
         return {"src_ids": src_ids, "tgt_ids": tgt_ids}
 
 def collate_fn(batch: list[dict[str, list[int]]], pad_id: int) -> dict[str, torch.Tensor]:
