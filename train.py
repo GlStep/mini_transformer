@@ -2,6 +2,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 import sentencepiece as spm
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -49,6 +50,7 @@ def run_epoch(model, loader, optimizer, loss_fn, device, pad_id, train: bool):
     model.train(train)
     total_loss = 0.0
     total_tokens = 0
+    step_losses = []
 
     desc = "train" if train else "validation"
     for batch in tqdm(loader, desc=desc):
@@ -73,12 +75,15 @@ def run_epoch(model, loader, optimizer, loss_fn, device, pad_id, train: bool):
         n_tokens = (tgt_target != pad_id).sum().item()
         total_loss += loss.item() * n_tokens
         total_tokens += n_tokens
+        step_losses.append(loss.item())
 
-    return total_loss / total_tokens
+    return total_loss / total_tokens, step_losses
 
 def main():
     device = get_device()
     print(f"Using device: {device}")
+
+    all_train_losses = []
 
     sp = spm.SentencePieceProcessor(model_file=str(SP_MODEL_PATH))
     pad_id = sp.pad_id()
@@ -98,14 +103,23 @@ def main():
     CHECKPOINT_DIR.mkdir(exist_ok=True)
 
     for epoch in range(NUM_EPOCHS):
-        train_loss = run_epoch(model, train_loader, optimizer, loss_fn, device, pad_id, train=True)
-        val_loss = run_epoch(model, val_loader, optimizer, loss_fn, device, pad_id, train=False)
+        train_loss, train_losses = run_epoch(model, train_loader, optimizer, loss_fn, device, pad_id, train=True)
+        val_loss, _ = run_epoch(model, val_loader, optimizer, loss_fn, device, pad_id, train=False)
+
+        all_train_losses.extend(train_losses)
 
         print(f"Epoch {epoch + 1}/{NUM_EPOCHS} - Train Loss: {train_loss:.4f} - Val Loss: {val_loss:.4f}")
 
         checkpoint_path = CHECKPOINT_DIR / f"transformer_epoch_{epoch + 1}.pt"
         torch.save(model.state_dict(), checkpoint_path)
         print(f"Saved checkpoint: {checkpoint_path}")
+
+    plt.plot(all_train_losses)
+    plt.title("Training Loss")
+    plt.xlabel("Steps")
+    plt.ylabel("Loss")
+    plt.savefig(CHECKPOINT_DIR / "training_loss.png")
+    print(f"Saved training loss plot: {CHECKPOINT_DIR / 'training_loss.png'}")
 
 if __name__ == "__main__":
     main()
