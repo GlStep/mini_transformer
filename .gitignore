@@ -29,6 +29,7 @@ MANIFEST
 # not necessary data folders
 data/raw/
 data/processed/
+tokenizer/trained/
 .venv
 
 # Editor files
