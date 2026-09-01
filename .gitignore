@@ -29,7 +29,6 @@ MANIFEST
 # not necessary data folders
 data/raw/
 data/processed/
-tokenizer/trained/
 checkpoints/
 .venv
 
