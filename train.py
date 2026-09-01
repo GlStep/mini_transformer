@@ -27,6 +27,8 @@ LR = 3e-4
 NUM_EPOCHS = 1
 GRAD_CLIP = 1.0
 
+WARMUP_STEPS = 400
+
 
 def get_device() -> torch.device:
     if torch.cuda.is_available():
@@ -46,7 +48,14 @@ def make_masks(model: Transformer, src: torch.Tensor, tgt_input: torch.Tensor):
 
     return src_mask, tgt_self_mask, cross_mask
 
-def run_epoch(model, loader, optimizer, loss_fn, device, pad_id, train: bool):
+def make_lr_lambda(d_model: int, warmup_steps: int):
+    def lr_lambda(step: int) -> float:
+        step = max(step, 1)
+        return (d_model ** -0.5) * min(step ** -0.5, step * (warmup_steps ** -1.5))
+    return lr_lambda
+
+
+def run_epoch(model, loader, optimizer, loss_fn, device, pad_id, scheduler, train: bool):
     model.train(train)
     total_loss = 0.0
     total_tokens = 0
@@ -71,6 +80,7 @@ def run_epoch(model, loader, optimizer, loss_fn, device, pad_id, train: bool):
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
                 optimizer.step()
+                scheduler.step()
 
         n_tokens = (tgt_target != pad_id).sum().item()
         total_loss += loss.item() * n_tokens
@@ -97,14 +107,15 @@ def main():
 
     model = Transformer(vocab_size=vocab_size, d_model=D_MODEL, n_heads=N_HEADS, d_ff=D_FF, n_layers=N_LAYERS, dropout=DROPOUT, pad_id=pad_id).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR, betas=(0.9, 0.98), eps=1e-9)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1, betas=(0.9, 0.98), eps=1e-9)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=make_lr_lambda(D_MODEL, WARMUP_STEPS))
     loss_fn = nn.CrossEntropyLoss(ignore_index=pad_id, label_smoothing=0.1)
 
     CHECKPOINT_DIR.mkdir(exist_ok=True)
 
     for epoch in range(NUM_EPOCHS):
-        train_loss, train_losses = run_epoch(model, train_loader, optimizer, loss_fn, device, pad_id, train=True)
-        val_loss, _ = run_epoch(model, val_loader, optimizer, loss_fn, device, pad_id, train=False)
+        train_loss, train_losses = run_epoch(model, train_loader, optimizer, loss_fn, device, pad_id, scheduler, train=True)
+        val_loss, _ = run_epoch(model, val_loader, optimizer, loss_fn, device, pad_id, scheduler, train=False)
 
         all_train_losses.extend(train_losses)
 
