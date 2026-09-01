@@ -19,4 +19,4 @@ def download(sample_size: int | None = None):
         print(f"Downloaded {pair} dataset to {output_dir}")
 
 if __name__ == "__main__":
-    download(sample_size=20000)
+    download(sample_size=200000)
