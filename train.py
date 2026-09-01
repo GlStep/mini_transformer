@@ -9,26 +9,10 @@ from torch.utils.data import DataLoader
 
 from mini_transformer.data.dataset import TranslationDataset, collate_fn
 from mini_transformer.model.transformer import Transformer
+from mini_transformer.config import load_config
 
-PAIRS = ["de-en", "en-ru", "en-zh"]
-# PAIRS = ["de-en"]
-PROCESSED_DIR = Path("data/processed")
-SP_MODEL_PATH = Path("tokenizer/trained/spm.model")
-CHECKPOINT_DIR = Path("checkpoints")
 
-D_MODEL = 256
-N_HEADS = 4
-D_FF = 1024
-N_LAYERS = 4
-DROPOUT = 0.1
-
-BATCH_SIZE = 32
-LR = 3e-4
-NUM_EPOCHS = 8
-GRAD_CLIP = 1.0
-
-WARMUP_STEPS = 4000
-
+cfg = load_config("config.yaml")
 
 def get_device() -> torch.device:
     if torch.cuda.is_available():
@@ -78,7 +62,7 @@ def run_epoch(model, loader, optimizer, loss_fn, device, pad_id, scheduler, trai
             if train:
                 optimizer.zero_grad()
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), GRAD_CLIP)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.training.grad_clip)
                 optimizer.step()
                 scheduler.step()
 
@@ -95,33 +79,33 @@ def main():
 
     all_train_losses = []
 
-    sp = spm.SentencePieceProcessor(model_file=str(SP_MODEL_PATH))
+    sp = spm.SentencePieceProcessor(model_file=str(cfg.tokenizer.model_path))
     pad_id = sp.pad_id()
     vocab_size = sp.get_piece_size()
 
-    train_ds = TranslationDataset(PAIRS, PROCESSED_DIR, SP_MODEL_PATH, split="train")
-    val_ds = TranslationDataset(PAIRS, PROCESSED_DIR, SP_MODEL_PATH, split="validation")
+    train_ds = TranslationDataset(cfg.data.pairs, Path(cfg.data.processed_dir), Path(cfg.tokenizer.model_path), split="train", max_len=cfg.model.max_len)
+    val_ds = TranslationDataset(cfg.data.pairs, Path(cfg.data.processed_dir), Path(cfg.tokenizer.model_path), split="validation", max_len=cfg.model.max_len)
 
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, collate_fn=lambda b: collate_fn(b, pad_id))
-    val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, collate_fn=lambda b: collate_fn(b, pad_id))
+    train_loader = DataLoader(train_ds, batch_size=cfg.training.batch_size, shuffle=True, collate_fn=lambda b: collate_fn(b, pad_id))
+    val_loader = DataLoader(val_ds, batch_size=cfg.training.batch_size, shuffle=False, collate_fn=lambda b: collate_fn(b, pad_id))
 
-    model = Transformer(vocab_size=vocab_size, d_model=D_MODEL, n_heads=N_HEADS, d_ff=D_FF, n_layers=N_LAYERS, dropout=DROPOUT, pad_id=pad_id).to(device)
+    model = Transformer(vocab_size=vocab_size, d_model=cfg.model.d_model, n_heads=cfg.model.n_heads, d_ff=cfg.model.d_ff, n_layers=cfg.model.n_layers, dropout=cfg.model.dropout, pad_id=pad_id).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1, betas=(0.9, 0.98), eps=1e-9)
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=make_lr_lambda(D_MODEL, WARMUP_STEPS))
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=make_lr_lambda(cfg.model.d_model, cfg.training.warmup_steps))
     loss_fn = nn.CrossEntropyLoss(ignore_index=pad_id, label_smoothing=0.1)
 
-    CHECKPOINT_DIR.mkdir(exist_ok=True)
+    Path(cfg.training.checkpoint_dir).mkdir(exist_ok=True)
 
-    for epoch in range(NUM_EPOCHS):
+    for epoch in range(cfg.training.num_epochs):
         train_loss, train_losses = run_epoch(model, train_loader, optimizer, loss_fn, device, pad_id, scheduler, train=True)
         val_loss, _ = run_epoch(model, val_loader, optimizer, loss_fn, device, pad_id, scheduler, train=False)
 
         all_train_losses.extend(train_losses)
 
-        print(f"Epoch {epoch + 1}/{NUM_EPOCHS} - Train Loss: {train_loss:.4f} - Val Loss: {val_loss:.4f}")
+        print(f"Epoch {epoch + 1}/{cfg.training.num_epochs} - Train Loss: {train_loss:.4f} - Val Loss: {val_loss:.4f}")
 
-        checkpoint_path = CHECKPOINT_DIR / f"transformer_epoch_{epoch + 1}.pt"
+        checkpoint_path = Path(cfg.training.checkpoint_dir) / f"transformer_epoch_{epoch + 1}.pt"
         torch.save(model.state_dict(), checkpoint_path)
         print(f"Saved checkpoint: {checkpoint_path}")
 
@@ -129,8 +113,8 @@ def main():
     plt.title("Training Loss")
     plt.xlabel("Steps")
     plt.ylabel("Loss")
-    plt.savefig(CHECKPOINT_DIR / "training_loss.png")
-    print(f"Saved training loss plot: {CHECKPOINT_DIR / 'training_loss.png'}")
+    plt.savefig(Path(cfg.training.checkpoint_dir) / "training_loss.png")
+    print(f"Saved training loss plot: {Path(cfg.training.checkpoint_dir) / 'training_loss.png'}")
 
 if __name__ == "__main__":
     main()

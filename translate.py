@@ -4,17 +4,10 @@ import torch
 import sentencepiece as spm
 
 from mini_transformer.model.transformer import Transformer
+from mini_transformer.config import load_config
 from pathlib import Path
 
-
-SP_MODEL_PATH = Path("tokenizer/trained/spm.model")
-CHECKPOINT_DIR = Path("checkpoints")
-
-D_MODEL = 256
-N_HEADS = 4
-D_FF = 1024
-N_LAYERS = 4
-MAX_LEN = 96
+cfg = load_config("config.yaml")
 
 
 def get_device() -> torch.device:
@@ -27,15 +20,15 @@ def get_device() -> torch.device:
 
 def load_model(vocab_size: int, pad_id: int, device: torch.device) -> Transformer:
     model = Transformer(
-        d_model=D_MODEL,
-        n_heads=N_HEADS,
-        d_ff=D_FF,
-        n_layers=N_LAYERS,
+        d_model=cfg.model.d_model,
+        n_heads=cfg.model.n_heads,
+        d_ff=cfg.model.d_ff,
+        n_layers=cfg.model.n_layers,
         pad_id=pad_id,
         vocab_size=vocab_size,
     )
 
-    state_dict = torch.load(CHECKPOINT_DIR / "transformer_epoch_8.pt", map_location=device)
+    state_dict = torch.load(Path(cfg.training.checkpoint_dir) / "transformer_epoch_8.pt", map_location=device)
     model.load_state_dict(state_dict)
     model.to(device)
     model.eval()
@@ -53,7 +46,7 @@ def greedy_decode(model: Transformer, sp: spm.SentencePieceProcessor, src_senten
 
     tgt_ids = [sp.bos_id()]
 
-    for _ in range(MAX_LEN):
+    for _ in range(cfg.model.max_len):
         tgt = torch.tensor([tgt_ids], device=device)
         tgt_self_mask = model.make_causal_mask(tgt.size(1))
 
@@ -70,9 +63,6 @@ def greedy_decode(model: Transformer, sp: spm.SentencePieceProcessor, src_senten
 
     return sp.decode(tgt_ids[1:], out_type=str)
 
-
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("text", type=str, help="Text to translate")
@@ -82,12 +72,12 @@ def main():
     device = get_device()
     print(f"Using device: {device}")
 
-    sq = spm.SentencePieceProcessor(model_file=str(SP_MODEL_PATH))
-    vocab_size = sq.get_piece_size()
+    sp = spm.SentencePieceProcessor(model_file=str(Path(cfg.tokenizer.model_path)))
+    vocab_size = sp.get_piece_size()
 
-    model = load_model(vocab_size=vocab_size, pad_id=0, device=device)
+    model = load_model(vocab_size=vocab_size, pad_id=sp.pad_id(), device=device)
 
-    translated_text = greedy_decode(model, sq, args.text, args.lang, device)
+    translated_text = greedy_decode(model, sp, args.text, args.lang, device)
     print(f"Translated text: {translated_text}")
 
 
