@@ -10,8 +10,8 @@ from torch.utils.data import DataLoader
 from mini_transformer.data.dataset import TranslationDataset, collate_fn
 from mini_transformer.model.transformer import Transformer
 
-# PAIRS = ["de-en", "en-ru", "en-zh"]
-PAIRS = ["de-en"]
+PAIRS = ["de-en", "en-ru", "en-zh"]
+# PAIRS = ["de-en"]
 PROCESSED_DIR = Path("data/processed")
 SP_MODEL_PATH = Path("tokenizer/trained/spm.model")
 CHECKPOINT_DIR = Path("checkpoints")
@@ -24,10 +24,10 @@ DROPOUT = 0.1
 
 BATCH_SIZE = 32
 LR = 3e-4
-NUM_EPOCHS = 1
+NUM_EPOCHS = 8
 GRAD_CLIP = 1.0
 
-WARMUP_STEPS = 400
+WARMUP_STEPS = 4000
 
 
 def get_device() -> torch.device:
